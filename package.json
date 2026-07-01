@@ -1,0 +1,10 @@
+{
+  "scripts": {
+    "start": "node chzzk_proxy_server.js"
+  },
+  "dependencies": {
+    "chzzk": "^1.10.4",
+    "express": "^5.2.1",
+    "socket.io": "^4.8.3"
+  }
+}
