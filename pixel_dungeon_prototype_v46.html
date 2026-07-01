@@ -626,11 +626,8 @@
             <div id="chzzkUI" class="overlay-panel">
                 <h3>📢 CHZZK CHAT SYNC</h3>
                 
-                <!-- 중계 서버 주소 설정 영역 (CORS 방지를 위해 필수 가동) -->
-                <div class="chzzk-input-group" style="margin-bottom: 2px;">
-                    <label>중계 서버 주소 (Socket.io)</label>
-                    <input type="text" id="localProxyUrl" value="http://localhost:3000" placeholder="예: http://localhost:3000" style="width: 100%;">
-                </div>
+                <!-- 중계 서버 주소 고정 (화면 비노출) -->
+                <input type="hidden" id="localProxyUrl" value="https://pixel-dungeon-4y1q.onrender.com">
 
                 <div class="chzzk-input-group">
                     <label>치지직 채널 ID 또는 방송 URL</label>
