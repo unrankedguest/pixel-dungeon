@@ -1068,7 +1068,7 @@
                     let cellX = startX + c * cellW;
                     let cellY = startY + 150 + r * cellH;
                     
-                    if (typeRand < 0.60) {
+                    if (typeRand < 0.45) {
                         // 1) 일반 가로 발판
                         pw = 100 + Math.floor(seededRandom(s++) * 120); // 100 ~ 220
                         ph = 18;
@@ -1084,7 +1084,7 @@
                             let pillarX = px + (seededRandom(s++) > 0.5 ? 10 : pw - 18);
                             platforms.push({ chunkKey: chunkKey, x: pillarX, y: py + ph, w: pillarW, h: pillarH, isRoundFloor: false, isOneWay: false });
                         }
-                    } else if (typeRand < 0.85) {
+                    } else if (typeRand < 0.70) {
                         // 2) 일방통행(One-way) 얇은 홀로그램 발판
                         pw = 90 + Math.floor(seededRandom(s++) * 90); // 90 ~ 180
                         ph = 14;
@@ -1092,8 +1092,23 @@
                         py = cellY + Math.floor(seededRandom(s++) * (cellH - 40));
                         
                         platforms.push({ chunkKey: chunkKey, x: px, y: py, w: pw, h: ph, isRoundFloor: false, isOneWay: true, isLocked: false });
+                    } else if (typeRand < 0.88) {
+                        // 3) 대각선 경사로 발판 (신규!)
+                        pw = 140 + Math.floor(seededRandom(s++) * 80); // 140 ~ 220
+                        ph = 45; // 경사 높이차
+                        px = cellX + Math.floor(seededRandom(s++) * (cellW - pw));
+                        py = cellY + Math.floor(seededRandom(s++) * (cellH - ph));
+                        let slopeDir = seededRandom(s++) > 0.5 ? 'up' : 'down';
+                        platforms.push({ 
+                            chunkKey: chunkKey, 
+                            x: px, y: py, w: pw, h: ph, 
+                            isRoundFloor: false, 
+                            isOneWay: false, 
+                            isSlope: true, 
+                            slopeDir: slopeDir 
+                        });
                     } else {
-                        // 3) 계단형 발판 브릿지 (2단)
+                        // 4) 계단형 발판 브릿지 (2단)
                         let stepW = 70;
                         pw = stepW * 2;
                         ph = 16;
@@ -1650,7 +1665,7 @@
             let maxStep = player.height / 2; 
 
             for (let p of platforms) {
-                if (p.isOneWay) continue; 
+                if (p.isOneWay || p.isSlope) continue; 
                 if (checkCollision(pRect, p)) {
                     let pTop = p.y; let pBottomEdge = player.y + player.height;
                     if (player.grounded && player.vy >= 0 && pBottomEdge - pTop > 0 && pBottomEdge - pTop <= maxStep) {
@@ -1677,6 +1692,7 @@
             player.y += player.vy; player.grounded = false; pRect.y = player.y;
 
             for (let p of platforms) {
+                if (p.isSlope) continue;
                 if (checkCollision(pRect, p)) {
                     if (p.isOneWay) {
                         if (player.vy > 0 && prevBottom <= p.y + 15) {
@@ -1695,6 +1711,31 @@
                         }
                     }
                     pRect.y = player.y;
+                }
+            }
+
+            // --- 대각선 경사로(Slope) 타기 및 충돌 처리 ---
+            let playerFootX = player.x + player.width / 2;
+            for (let p of platforms) {
+                if (!p.isSlope) continue;
+                if (playerFootX >= p.x && playerFootX <= p.x + p.w) {
+                    let ratio = (playerFootX - p.x) / p.w;
+                    let slopeY = (p.slopeDir === 'up') 
+                        ? (p.y + p.h - ratio * p.h) 
+                        : (p.y + ratio * p.h);
+                    
+                    let currBottom = player.y + player.height;
+                    let prevBottom = player.y - player.vy + player.height;
+                    
+                    if (currBottom >= slopeY && prevBottom <= slopeY + 24) {
+                        player.y = slopeY - player.height;
+                        player.vy = 0;
+                        player.grounded = true;
+                        player.hoverGauge += 10;
+                        if (player.hoverGauge > player.maxHoverGauge) player.hoverGauge = player.maxHoverGauge;
+                        pRect.y = player.y;
+                        break;
+                    }
                 }
             }
 
@@ -2017,16 +2058,39 @@
                 if (e.type !== "FLYER" && e.modifier !== "SHADOW") {
                     e.x += finalVx;
                     for (let p of platforms) {
-                        if (p.isOneWay) continue; 
+                        if (p.isOneWay || p.isSlope) continue; 
                         if (checkCollision({x: e.x, y: e.y, w: e.w, h: e.h}, p)) {
                             if (finalVx > 0) e.x = p.x - e.w; if (finalVx < 0) e.x = p.x + p.w; if (e.state === "ROAM") e.roamDir *= -1;
                         }
                     }
                     e.y += finalVy; e.grounded = false;
                     for (let p of platforms) {
+                        if (p.isSlope) continue;
                         if (checkCollision({x: e.x, y: e.y, w: e.w, h: e.h}, p)) {
                             if (p.isOneWay) { if (finalVy > 0 && (e.y - finalVy + e.h <= p.y + 15)) { e.y = p.y - e.h; e.vy = 0; e.grounded = true; } } 
                             else { if (finalVy > 0) { e.y = p.y - e.h; e.vy = 0; e.grounded = true; } else if (finalVy < 0) { e.y = p.y + p.h; e.vy = 0; } }
+                        }
+                    }
+
+                    // --- 적(Enemy)의 경사로 탑승 및 충돌 처리 ---
+                    let enemyFootX = e.x + e.w / 2;
+                    for (let p of platforms) {
+                        if (!p.isSlope) continue;
+                        if (enemyFootX >= p.x && enemyFootX <= p.x + p.w) {
+                            let ratio = (enemyFootX - p.x) / p.w;
+                            let slopeY = (p.slopeDir === 'up') 
+                                ? (p.y + p.h - ratio * p.h) 
+                                : (p.y + ratio * p.h);
+                            
+                            let currBottom = e.y + e.h;
+                            let prevBottom = e.y - e.vy + e.h;
+                            
+                            if (currBottom >= slopeY && prevBottom <= slopeY + 24) {
+                                e.y = slopeY - e.h;
+                                e.vy = 0;
+                                e.grounded = true;
+                                break;
+                            }
                         }
                     }
                 } else { 
@@ -2225,7 +2289,113 @@
                 
                 ctx.save();
                 
-                if (p.isOneWay) {
+                if (p.isSlope) {
+                    // --- 대각선 경사로 발판 (Slope) 디자인 ---
+                    let currentRound = Math.max(1, Math.floor(player.y / CHUNK_H) + 1);
+                    
+                    // 1. 라운드(깊이)에 따른 돌벽 톤 설정
+                    let grad = ctx.createLinearGradient(p.x, p.y, p.x, p.y + p.h);
+                    if (currentRound <= 3) {
+                        grad.addColorStop(0, "#3a3028");
+                        grad.addColorStop(1, "#1d1713");
+                    } else if (currentRound <= 7) {
+                        grad.addColorStop(0, "#252e37");
+                        grad.addColorStop(1, "#12171c");
+                    } else if (currentRound <= 11) {
+                        grad.addColorStop(0, "#191522");
+                        grad.addColorStop(1, "#0a080f");
+                    } else {
+                        grad.addColorStop(0, "#220e0a");
+                        grad.addColorStop(1, "#0c0403");
+                    }
+                    ctx.fillStyle = grad;
+                    
+                    // 삼각형 바디 채우기
+                    ctx.beginPath();
+                    if (p.slopeDir === 'up') {
+                        ctx.moveTo(p.x, p.y + p.h);
+                        ctx.lineTo(p.x + p.w, p.y);
+                        ctx.lineTo(p.x + p.w, p.y + p.h);
+                    } else {
+                        ctx.moveTo(p.x, p.y);
+                        ctx.lineTo(p.x + p.w, p.y + p.h);
+                        ctx.lineTo(p.x, p.y + p.h);
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+                    
+                    // 2. 사선 표면 엣지 장식 (이끼/흙/용암)
+                    let topColor = "#4d7c0f";
+                    if (currentRound <= 3) topColor = "#854d0e";
+                    else if (currentRound <= 7) topColor = "#15803d";
+                    else if (currentRound <= 11) topColor = "#6b21a8";
+                    else topColor = "#ea580c";
+                    
+                    ctx.save();
+                    ctx.beginPath();
+                    if (p.slopeDir === 'up') {
+                        ctx.moveTo(p.x, p.y + p.h);
+                        ctx.lineTo(p.x + p.w, p.y);
+                    } else {
+                        ctx.moveTo(p.x, p.y);
+                        ctx.lineTo(p.x + p.w, p.y + p.h);
+                    }
+                    ctx.strokeStyle = topColor;
+                    ctx.lineWidth = 4;
+                    ctx.stroke();
+                    
+                    // 마그마 층(12라운드 이상) 엣지 광원 효과
+                    if (currentRound >= 12) {
+                        ctx.shadowBlur = 6;
+                        ctx.shadowColor = "#f97316";
+                        ctx.strokeStyle = "#f97316";
+                        ctx.lineWidth = 1.2;
+                        ctx.stroke();
+                    }
+                    ctx.restore();
+                    
+                    // 3. 사선 벽돌 조인트 무늬 (경사 내부에 가로 줄무늬를 클리핑 영역 내에 그리기)
+                    ctx.save();
+                    ctx.beginPath();
+                    if (p.slopeDir === 'up') {
+                        ctx.moveTo(p.x, p.y + p.h - 1);
+                        ctx.lineTo(p.x + p.w, p.y);
+                        ctx.lineTo(p.x + p.w, p.y + p.h);
+                    } else {
+                        ctx.moveTo(p.x, p.y + 1);
+                        ctx.lineTo(p.x + p.w, p.y + p.h);
+                        ctx.lineTo(p.x, p.y + p.h);
+                    }
+                    ctx.closePath();
+                    ctx.clip(); // 경사면 내부로만 그리도록 클리핑
+                    
+                    ctx.strokeStyle = "rgba(0,0,0,0.38)";
+                    ctx.lineWidth = 1;
+                    
+                    // 가로 줄눈
+                    const rowH = 15;
+                    for (let by = p.y + rowH; by < p.y + p.h; by += rowH) {
+                        ctx.beginPath();
+                        ctx.moveTo(p.x, by);
+                        ctx.lineTo(p.x + p.w, by);
+                        ctx.stroke();
+                    }
+                    
+                    // 세로 줄눈
+                    const colW = 30;
+                    let rowIndex = 0;
+                    for (let by = p.y; by < p.y + p.h; by += rowH) {
+                        let shift = (rowIndex % 2 === 0) ? (colW / 2) : 0;
+                        for (let bx = p.x + shift; bx < p.x + p.w; bx += colW) {
+                            ctx.beginPath();
+                            ctx.moveTo(bx, by);
+                            ctx.lineTo(bx, by + rowH);
+                            ctx.stroke();
+                        }
+                        rowIndex++;
+                    }
+                    ctx.restore();
+                } else if (p.isOneWay) {
                     // --- 일방통행 (One-way / Runic Slab) 발판 디자인 ---
                     const isLocked = p.isLocked;
                     

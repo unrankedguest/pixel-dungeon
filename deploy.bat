@@ -3,9 +3,9 @@ echo ==========================================
 echo  Deploying to GitHub
 echo ==========================================
 
-REM 1. Find the latest prototype HTML
+REM 1. Find the latest prototype HTML (Sorted by name descending to get the highest version)
 set LATEST_HTML=
-for /f "delims=" %%i in ('dir /b /o-d pixel_dungeon_prototype_v*.html 2^>nul') do (
+for /f "delims=" %%i in ('dir /b /o-n pixel_dungeon_prototype_v*.html 2^>nul') do (
     set LATEST_HTML=%%i
     goto :found
 )
